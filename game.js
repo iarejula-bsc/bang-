@@ -17,30 +17,47 @@ const PALETTES = [
   ['#ffd9a0', '#c2452f', '#fff3c4', '#5d2419', '#2a1109'], // blood dusk
 ];
 
-/* type:
-   duel      - classic: draw on BANG
-   feint     - decoy words appear before the real BANG
-   aim       - after BANG a side lights up, shoot that side
-   dodge     - dodge the first shot, then draw
-   double    - two bandits, two taps
-*/
+/* Mechanics. Each one shows up several times, harder every time, and no two
+   levels in a row use the same one.
+     duel   - classic: draw on BANG                        (opp gets faster)
+     feint  - decoy words flash before the real BANG        (more, shorter)
+     aim    - a side lights up, shoot that side             (steps: 1 -> 2 -> 3)
+     mirror - a side lights up, shoot the OTHER one         (steps too)
+     dodge  - he shoots early: duck, then draw              (dodges: 1 -> 2 -> 3)
+     gang   - several bandits, one shot each, one budget    (foes: 2 -> 3 -> 4)
+     sudden - no READY, no STEADY. BANG can come at once.   (opp gets faster)
+   opp    = the opponent's reaction time in ms (for gang / multi-step aim it is
+            the whole budget); wait = random window before the bang.          */
 const LEVELS = [
-  { n:'The Rookie',   type:'duel',   opp: 620, pal:0, wait:[900,2000] },
-  { n:'Dusty Pete',   type:'duel',   opp: 540, pal:0, wait:[900,2400] },
-  { n:'The Trickster',type:'feint',  opp: 520, pal:1, wait:[1400,3000], decoys:1 },
-  { n:'Quickdraw Sal',type:'duel',   opp: 460, pal:1, wait:[800,2600] },
-  { n:'Two Guns Ray', type:'aim',    opp: 520, pal:3, wait:[900,2400] },
-  { n:'The Sheriff',  type:'duel',   opp: 410, pal:3, wait:[900,2800] },
-  { n:'Liar Lopez',   type:'feint',  opp: 430, pal:1, wait:[1600,3400], decoys:2 },
-  { n:'Cheap Shot',   type:'dodge',  opp: 470, pal:2, wait:[800,2200] },
-  { n:'Silver Kid',   type:'duel',   opp: 370, pal:2, wait:[900,3000] },
-  { n:'The Brothers', type:'double', opp: 760, pal:0, wait:[900,2600] },
-  { n:'Crosseye Jim', type:'aim',    opp: 400, pal:2, wait:[900,2600] },
-  { n:'Mad Molly',    type:'feint',  opp: 360, pal:3, wait:[1600,3600], decoys:3 },
-  { n:'Backshooter',  type:'dodge',  opp: 390, pal:3, wait:[800,2400] },
-  { n:'The Gang',     type:'double', opp: 600, pal:2, wait:[900,2800] },
-  { n:'El Diablo',    type:'duel',   opp: 300, pal:3, wait:[1000,3600] },
+  { n:'The Rookie',    type:'duel',   opp: 620, pal:0, wait:[900,2000] },
+  { n:'Dusty Pete',    type:'duel',   opp: 540, pal:0, wait:[900,2400] },
+  { n:'The Trickster', type:'feint',  opp: 520, pal:1, wait:[1400,3000], decoys:1 },
+  { n:'Quickdraw Sal', type:'duel',   opp: 470, pal:1, wait:[800,2600] },
+  { n:'Two Guns Ray',  type:'aim',    opp: 560, pal:3, wait:[900,2400], steps:1 },
+  { n:'The Sheriff',   type:'duel',   opp: 420, pal:3, wait:[900,2800] },
+  { n:'Liar Lopez',    type:'feint',  opp: 450, pal:1, wait:[1600,3400], decoys:2 },
+  { n:'Cheap Shot',    type:'dodge',  opp: 470, pal:2, wait:[800,2200], dodges:1 },
+  { n:'The Brothers',  type:'gang',   opp: 800, pal:0, wait:[900,2600], foes:2 },
+  { n:'Silver Kid',    type:'duel',   opp: 380, pal:2, wait:[900,3000] },
+  { n:'Crosseye Jim',  type:'aim',    opp: 780, pal:2, wait:[900,2600], steps:2 },
+  { n:'Mad Molly',     type:'feint',  opp: 400, pal:3, wait:[1600,3600], decoys:3 },
+  { n:'The Ambush',    type:'sudden', opp: 520, pal:1, wait:[300,1500] },
+  { n:'Backshooter',   type:'dodge',  opp: 420, pal:3, wait:[800,2400], dodges:2 },
+  { n:'The Gang',      type:'gang',   opp:1050, pal:2, wait:[900,2800], foes:3 },
+  { n:'Mirror Man',    type:'mirror', opp: 620, pal:1, wait:[900,2600], steps:1 },
+  { n:'El Rapido',     type:'duel',   opp: 340, pal:0, wait:[1000,3200] },
+  { n:'Whisper Wade',  type:'feint',  opp: 360, pal:2, wait:[1800,4000], decoys:4 },
+  { n:'The Cartel',    type:'gang',   opp:1250, pal:3, wait:[900,3000], foes:4 },
+  { n:'The Ghost',     type:'sudden', opp: 400, pal:2, wait:[250,1200] },
+  { n:'Dead Eye Duo',  type:'aim',    opp: 640, pal:3, wait:[900,2800], steps:2 },
+  { n:"Dead Man's Hand",type:'dodge', opp: 380, pal:2, wait:[800,2600], dodges:3 },
+  { n:'Sharpshooter',  type:'mirror', opp: 800, pal:0, wait:[900,3000], steps:2 },
+  { n:'El Diablo',     type:'duel',   opp: 290, pal:3, wait:[1000,3600] },
 ];
+
+// where the bandits stand, by how many of them there are
+const FOE_SPOTS = { 1:[0.77], 2:[0.66,0.87], 3:[0.58,0.74,0.90], 4:[0.52,0.65,0.78,0.92] };
+const FOE_TINTS = ['#b3402c', '#7c4a86', '#2f7d6a', '#b3822c'];
 
 const STARS = [230, 320, 460];    // ms thresholds for 3 / 2 / 1 stars
 const VS_WIN = 3;                 // rounds needed to take a local match
@@ -130,14 +147,28 @@ const scene = {
   foes: [],
 };
 
+const isFlank = (l) => l.type === 'aim' || l.type === 'mirror';
+
 function resetScene(level, foeCount) {
   scene.pal = level.pal; scene.shake = 0; scene.flash = 0;
-  Object.assign(scene.hero, { arm: 0, fall: 0, lean: 0, flash: 0 });
+  Object.assign(scene.hero, { arm: 0, fall: 0, lean: 0, flash: 0, dir: 1 });
   scene.foes = [];
+
+  if (isFlank(level)) {            // hero in the middle, one bandit either side
+    scene.hero.px = 0.5;
+    scene.foes.push({ px: 0.12, dir:  1, s: 1, dy: 0, arm: 0, fall: 0, lean: 0,
+                      flash: 0, accent: FOE_TINTS[0] });
+    scene.foes.push({ px: 0.88, dir: -1, s: 1, dy: 0, arm: 0, fall: 0, lean: 0,
+                      flash: 0, accent: FOE_TINTS[1] });
+    return;
+  }
+  scene.hero.px = 0.23;
+  const spots = FOE_SPOTS[foeCount] || FOE_SPOTS[4];
+  const crowd = foeCount > 2 ? (foeCount > 3 ? 0.86 : 0.92) : 1;
   for (let i = 0; i < foeCount; i++) {
     scene.foes.push({
-      px: foeCount === 1 ? 0.77 : 0.66 + i * 0.15, dir: -1,
-      arm: 0, fall: 0, lean: 0, flash: 0, accent: i ? '#7c4a86' : '#b3402c',
+      px: spots[i], dir: -1, s: crowd * (i % 2 ? 0.94 : 1), dy: i % 2 ? -9 : 0,
+      arm: 0, fall: 0, lean: 0, flash: 0, accent: FOE_TINTS[i % FOE_TINTS.length],
     });
   }
 }
@@ -216,11 +247,12 @@ function drawBackground() {
 
 /* one gunslinger, silhouette style */
 function drawGuy(g, tick) {
-  const x = clamp(g.px * W, 150 * S, W - 150 * S);
+  const gs = S * (g.s || 1);
+  const x = clamp(g.px * W, 120 * gs, W - 120 * gs);
   const bob = g.fall ? 0 : Math.sin(tick / 520 + g.px * 9) * 1.4;
   ctx.save();
-  ctx.translate(x, GROUND + 6 * S);
-  ctx.scale(g.dir * S, S);
+  ctx.translate(x, GROUND + 6 * S + (g.dy || 0) * S);
+  ctx.scale(g.dir * gs, gs);
   if (g.fall) ctx.rotate(-Math.min(g.fall, 1) * 1.42);
   ctx.rotate(g.lean * -0.30);
   ctx.translate(0, bob);
@@ -381,74 +413,108 @@ const state = { screen: 'menu', mode: 'solo', i: 0, phase: 'idle', bangAt: 0, hi
                 side: null, react: 0, score: [0, 0], round: 0 };
 let L = LEVELS[0];
 
+const HINTS = {
+  duel:   'DRAW ON BANG!',
+  feint:  'ONLY "BANG!" COUNTS',
+  aim:    'SHOOT THE SIDE THAT LIGHTS UP  (\u2190 \u2192)',
+  mirror: 'SHOOT THE SIDE THAT DOES NOT  (\u2190 \u2192)',
+  dodge:  'HE PLAYS DIRTY — DODGE, THEN DRAW',
+  sudden: 'NO READY. NO STEADY.',
+};
+
 function startLevel(i) {
   clearTimers();
   state.mode = 'solo'; $('pads').classList.remove('on');
   $('quit').innerHTML = '&#8592; LEVELS';
   state.i = i; L = LEVELS[i];
-  state.phase = 'lead'; state.hits = 0; state.side = null; state.react = 0;
-  resetScene(L, L.type === 'double' ? 2 : 1);
+  state.phase = 'lead'; state.hits = 0; state.side = null; state.react = 0; state.dodged = 0;
+  resetScene(L, L.foes || (isFlank(L) ? 2 : 1));
   $('lvlname').textContent = 'LVL ' + (i + 1) + ' · ' + L.n.toUpperCase();
   dirsEl.style.opacity = 0; $('dL').className = 'd'; $('dR').className = 'd';
-  cue(''); hint(L.type === 'dodge' ? 'HE PLAYS DIRTY — DODGE, THEN DRAW' :
-              L.type === 'aim' ? 'TAP THE SIDE THAT LIGHTS UP  (or \u2190 \u2192)' :
-              L.type === 'double' ? 'TWO BANDITS — TWO SHOTS' :
-              L.type === 'feint' ? 'ONLY "BANG!" COUNTS' : 'DRAW ON BANG!');
+  cue('');
+  hint(L.type === 'gang' ? L.foes + ' BANDITS — ' + L.foes + ' SHOTS'
+     : isFlank(L) && L.steps > 1 ? HINTS[L.type] + ' \u00d7' + L.steps
+     : L.type === 'dodge' && L.dodges > 1 ? 'HE SHOOTS ' + L.dodges + ' TIMES — DODGE THEM ALL'
+     : HINTS[L.type]);
   show('play');
   actx();
+
+  if (L.type === 'sudden') {                  // straight to the draw
+    state.phase = 'armed';
+    after(rnd(L.wait[0], L.wait[1]), bang);
+    return;
+  }
 
   after(450, () => { state.phase = 'ready'; cue('READY'); sfx.tick(); });
   after(1250, () => {
     state.phase = 'steady'; cue('STEADY'); sfx.tick(); hint('');
+    if (L.type === 'dodge') { nextDodge(); return; }
+    state.phase = 'armed';
     const wait = rnd(L.wait[0], L.wait[1]);
-    if (L.type === 'dodge') {
-      const d1 = rnd(700, 1700);
-      after(d1, () => {
-        state.phase = 'dodge'; cue('DODGE!', true); sfx.cue();
-        shoot(scene.foes[0]); scene.flash = .5;
-        after(430, () => {
-          if (state.phase !== 'dodge') return;
-          drop(scene.hero); finish(false, 'You ate lead. Should have ducked.');
-        });
-      });
-    } else {
-      state.phase = 'armed';
-      if (L.type === 'feint') {
-        const words = ['BANK!', 'BANG?', 'BANANA!', 'BENG!', 'BAND!', 'BLANK!'];
-        const n = L.decoys || 1;
-        for (let k = 0; k < n; k++) {
-          const t = 400 + (wait - 900) * ((k + 0.5 + Math.random() * .4) / n);
-          after(t, () => {
-            if (state.phase !== 'armed') return;
-            cue(words[Math.floor(Math.random() * words.length)], true); sfx.tick();
-            after(320, () => { if (state.phase === 'armed') cue(''); });
-          });
-        }
-      }
-      after(wait, bang);
-    }
+    if (L.type === 'feint') scheduleDecoys(wait, L.decoys || 1);
+    after(wait, bang);
   });
 }
+
+/* he keeps taking cheap shots, and the window to duck keeps shrinking */
+function nextDodge() {
+  after(rnd(600, 1500), () => {
+    if (state.phase !== 'steady' && state.phase !== 'armed2') return;
+    state.phase = 'dodge';
+    cue('DODGE!', true); sfx.cue();
+    shoot(scene.foes[0]); scene.flash = .5;
+    after(clamp(440 - state.dodged * 50, 280, 440), () => {
+      if (state.phase !== 'dodge') return;
+      drop(scene.hero);
+      finish(false, 'You ate lead. Should have ducked.');
+    });
+  });
+}
+
+/* the more decoys a level has, the shorter each one flashes */
+function scheduleDecoys(wait, n) {
+  const words = ['BANK!', 'BANG?', 'BANANA!', 'BENG!', 'BAND!', 'BLANK!', 'BONG!', 'BANG.'];
+  const flash = clamp(380 - n * 35, 170, 380);
+  for (let k = 0; k < n; k++) {
+    const t = 380 + (wait - 900) * ((k + 0.4 + Math.random() * .4) / n);
+    after(t, () => {
+      if (state.phase !== 'armed') return;
+      cue(words[Math.floor(Math.random() * words.length)], true); sfx.tick();
+      after(flash, () => { if (state.phase === 'armed') cue(''); });
+    });
+  }
+}
+
+/* light up one flank; steps alternate, so you have to swing the gun over */
+function lightSide(prev) {
+  state.side = prev ? (prev === 'L' ? 'R' : 'L') : (Math.random() < .5 ? 'L' : 'R');
+  dirsEl.style.opacity = 1;
+  $('dL').className = 'd'; $('dR').className = 'd';
+  $(state.side === 'L' ? 'dL' : 'dR').className = 'd hot';
+}
+
+const wantedSide = () => L.type === 'mirror' ? (state.side === 'L' ? 'R' : 'L') : state.side;
+const foeOn = (side) => scene.foes[side === 'L' ? 0 : 1];
 
 function bang() {
   if (state.phase !== 'armed' && state.phase !== 'armed2') return;
   state.phase = 'bang'; state.bangAt = now();
   cue('BANG!'); sfx.cue(); scene.flash = .35;
 
-  if (L.type === 'aim') {
-    state.side = Math.random() < .5 ? 'L' : 'R';
-    dirsEl.style.opacity = 1;
-    $(state.side === 'L' ? 'dL' : 'dR').className = 'd hot';
-  }
+  if (isFlank(L)) lightSide();
   if (state.mode === 'vs') { after(4000, vsStalemate); return; }
 
   after(L.opp, () => {
     if (state.phase !== 'bang') return;
-    shoot(scene.foes.find(f => !f.fall) || scene.foes[0]);
-    drop(scene.hero);
+    const shooter = isFlank(L) ? foeOn(wantedSide())
+                               : scene.foes.find(f => !f.fall) || scene.foes[0];
+    shoot(shooter); drop(scene.hero);
     state.react = now() - state.bangAt;
-    finish(false, 'He drew in ' + fmt(L.opp) + '. You were still reaching' +
-      (state.hits ? ' for the second one.' : '.'));
+    finish(false, L.type === 'gang'
+      ? 'Too slow: ' + state.hits + ' of ' + L.foes + ' down when they got you.'
+      : isFlank(L) && L.steps > 1
+        ? 'You only got ' + state.hits + ' of ' + L.steps + ' in time.'
+        : 'He drew in ' + fmt(L.opp) + '. You were still reaching.');
   });
 }
 
@@ -462,27 +528,43 @@ function falseStart() {
 
 function playerShoots(sideTapped) {
   const react = now() - state.bangAt;
+  const flank = isFlank(L);
 
-  if (L.type === 'aim' && sideTapped !== state.side) {
-    state.phase = 'over'; clearTimers();
-    shoot(scene.hero); scene.flash = .3;
-    after(260, () => { shoot(scene.foes[0]); drop(scene.hero); });
-    finish(false, 'Wrong side, cowboy.');
-    return;
+  if (flank) {
+    const want = wantedSide();
+    if (sideTapped !== want) {                       // shot the wrong bandit
+      state.phase = 'over'; clearTimers();
+      scene.hero.dir = sideTapped === 'L' ? -1 : 1;
+      shoot(scene.hero); scene.flash = .3;
+      after(260, () => { shoot(foeOn(want)); drop(scene.hero); });
+      finish(false, L.type === 'mirror'
+        ? 'That is the one who lit up. You want the other one.'
+        : 'Wrong side, cowboy.');
+      return;
+    }
+    scene.hero.dir = want === 'L' ? -1 : 1;
   }
 
   shoot(scene.hero);
-  const target = scene.foes.find(f => !f.fall);
+  const target = flank ? foeOn(wantedSide()) : scene.foes.find(f => !f.fall);
   if (target) drop(target);
   state.hits++;
 
-  if (L.type === 'double' && scene.foes.some(f => !f.fall)) return;   // keep going
+  if (L.type === 'gang' && scene.foes.some(f => !f.fall)) return;      // keep firing
+  if (flank && state.hits < (L.steps || 1)) {                          // swing over
+    lightSide(state.side); sfx.cue();
+    return;
+  }
 
   state.phase = 'over'; clearTimers();
   state.react = react;
-  finish(true, L.type === 'double'
-    ? 'Both of them, in ' + fmt(react) + '. Cold blooded.'
-    : 'He never cleared the holster.');
+  dirsEl.style.opacity = 0;
+  finish(true,
+    L.type === 'gang'   ? 'All ' + L.foes + ' of them in ' + fmt(react) + '. Cold blooded.' :
+    flank && L.steps > 1 ? L.steps + ' targets in ' + fmt(react) + '. Both hands working.' :
+    L.type === 'dodge'  ? 'Ducked ' + L.dodges + ', then buried him.' :
+    L.type === 'sudden' ? 'No warning needed.' :
+                          'He never cleared the holster.');
 }
 
 function finish(win, note) {
@@ -520,7 +602,7 @@ function startVersus(fresh) {
   if (fresh) { state.score = [0, 0]; state.round = 0; }
   state.round++;
   L = { n: 'LOCAL DUEL', type: 'duel', opp: 0, pal: state.round % PALETTES.length,
-        wait: [900, 3400] };
+        wait: [900, 3400], dodges: 0 };
   state.phase = 'lead'; state.react = 0; state.hits = 0; state.side = null;
   resetScene(L, 1);
   scene.foes[0].accent = '#b3402c';
@@ -597,15 +679,19 @@ function tap(sideTapped, src) {
   switch (state.phase) {
     case 'lead': case 'ready': case 'steady': case 'armed': case 'armed2':
       vs ? vsFlinch(p) : falseStart(); break;
-    case 'dodge':
+    case 'dodge': {
       clearTimers();
-      scene.hero.lean = -1; scene.flash = .2; sfx.tick();
+      scene.hero.lean = state.dodged % 2 ? 1 : -1; scene.flash = .2; sfx.tick();
+      state.dodged++;
       state.phase = 'armed2';
-      hint('NOW GET HIM');
+      const left = (L.dodges || 1) - state.dodged;
       cue('MISSED!', true);
+      hint(left ? left + ' MORE COMING' : 'NOW GET HIM');
       after(520, () => { scene.hero.lean = 0; cue(''); });
-      after(rnd(900, 2000), bang);
+      if (left > 0) nextDodge();
+      else after(rnd(900, 2000), bang);
       break;
+    }
     case 'bang':
       vs ? vsShoot(p) : playerShoots(sideTapped); break;
   }

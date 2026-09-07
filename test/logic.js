@@ -177,8 +177,8 @@ t('dodge: standing still gets you shot', () => {
   advance(1200); assert.equal(els.verdict.textContent, 'YOU DIED');
 });
 
-t('double: two bandits need two shots', () => {
-  const i = typeIdx('double');
+t('gang: two bandits need two shots', () => {
+  const i = G.LEVELS.findIndex(l => l.type === 'gang' && l.foes === 2);
   G.startLevel(i); toBang();
   advance(150); tapAt(100);
   assert.equal(G.state.phase, 'bang', 'round ended after one shot');
@@ -189,8 +189,8 @@ t('double: two bandits need two shots', () => {
   assert(G.scene.foes.every(f => f.fall > 0), 'a bandit is still standing');
 });
 
-t('double: one shot in time is not enough', () => {
-  const i = typeIdx('double');
+t('gang: one shot in time is not enough', () => {
+  const i = G.LEVELS.findIndex(l => l.type === 'gang' && l.foes === 2);
   G.startLevel(i); toBang();
   advance(150); tapAt(100);
   advance(G.LEVELS[i].opp + 50); advance(1200);
@@ -217,6 +217,133 @@ t('progress is persisted', () => {
   assert(store['rsb.save.v1'], 'nothing persisted');
   const back = JSON.parse(store['rsb.save.v1']);
   assert(back.best && Object.keys(back.best).length, 'no best times persisted');
+});
+
+t('gang: a bigger gang needs a shot each', () => {
+  for (const n of [3, 4]) {
+    const i = G.LEVELS.findIndex(l => l.type === 'gang' && l.foes === n);
+    assert(i >= 0, 'no gang of ' + n);
+    G.startVersus && 0;
+    G.startLevel(i); toBang();
+    assert.equal(G.scene.foes.length, n, 'wrong crowd size');
+    for (let k = 0; k < n; k++) {
+      advance(60); tapAt(100);
+      const standing = G.scene.foes.filter(f => !f.fall).length;
+      assert.equal(standing, n - k - 1, 'bandit ' + (k + 1) + ' still up');
+      if (k < n - 1) assert.equal(G.state.phase, 'bang', 'round ended early');
+    }
+    advance(1400);
+    assert.equal(els.verdict.textContent, 'WINNER', 'gang of ' + n + ' unwinnable');
+  }
+});
+
+t('aim duels stand a bandit on each flank', () => {
+  const i = typeIdx('aim');
+  G.startLevel(i);
+  assert.equal(G.scene.foes.length, 2);
+  assert.equal(G.scene.foes[0].dir, 1);      // left one faces right
+  assert.equal(G.scene.foes[1].dir, -1);
+  assert.equal(G.scene.hero.px, 0.5);        // hero in the middle
+});
+
+t('aim: two steps alternate sides and drop both bandits', () => {
+  const i = G.LEVELS.findIndex(l => l.type === 'aim' && l.steps === 2);
+  assert(i >= 0, 'no two-step aim level');
+  G.startLevel(i); toBang();
+  const first = G.state.side;
+  advance(90); tapAt(first === 'L' ? 100 : 900);
+  assert.equal(G.state.phase, 'bang', 'ended after one target');
+  assert.notEqual(G.state.side, first, 'the other flank should light up');
+  advance(90); tapAt(G.state.side === 'L' ? 100 : 900);
+  assert.equal(G.state.phase, 'over');
+  assert(G.scene.foes.every(f => f.fall > 0), 'a flank is still standing');
+  advance(1400);
+  assert.equal(els.verdict.textContent, 'WINNER');
+});
+
+t('aim: missing a later step still loses', () => {
+  const i = G.LEVELS.findIndex(l => l.type === 'aim' && l.steps === 2);
+  G.startLevel(i); toBang();
+  advance(90); tapAt(G.state.side === 'L' ? 100 : 900);
+  advance(G.LEVELS[i].opp + 60); advance(1400);
+  assert.equal(els.verdict.textContent, 'YOU DIED');
+});
+
+t('mirror: you must shoot the side that did NOT light up', () => {
+  const i = typeIdx('mirror');
+  assert(i >= 0, 'no mirror level');
+  G.startLevel(i); toBang();
+  advance(90); tapAt(G.state.side === 'L' ? 100 : 900);   // obedient = wrong
+  advance(1400);
+  assert.equal(els.verdict.textContent, 'YOU DIED');
+
+  G.startLevel(i); toBang();
+  advance(90); tapAt(G.state.side === 'L' ? 900 : 100);   // the other one
+  advance(1400);
+  assert.equal(els.verdict.textContent, 'WINNER');
+});
+
+t('sudden: no countdown, and flinching still loses', () => {
+  const i = typeIdx('sudden');
+  assert(i >= 0, 'no sudden level');
+  G.startLevel(i);
+  assert.equal(G.state.phase, 'armed', 'sudden levels skip READY/STEADY');
+  assert.equal(els.cue.textContent, '');
+  tapAt(100);                                            // drew before the bang
+  assert.equal(els.cue.textContent, 'TOO SOON!');
+  advance(1400);
+  assert.equal(els.verdict.textContent, 'YOU DIED');
+
+  G.startLevel(i); toBang();
+  advance(120); tapAt(100); advance(1400);
+  assert.equal(els.verdict.textContent, 'WINNER');
+});
+
+t('dodge: three cheap shots must all be ducked', () => {
+  const i = G.LEVELS.findIndex(l => l.type === 'dodge' && l.dodges === 3);
+  assert(i >= 0, 'no three-dodge level');
+  G.startLevel(i);
+  for (let k = 0; k < 3; k++) {
+    assert(advanceUntil(() => G.state.phase === 'dodge'), 'dodge ' + (k + 1) + ' never came');
+    advance(60); tapAt(100);
+    assert.equal(G.state.dodged, k + 1);
+  }
+  toBang(); advance(120); tapAt(100); advance(1400);
+  assert.equal(els.verdict.textContent, 'WINNER');
+});
+
+t('dodge: missing the second cheap shot loses', () => {
+  const i = G.LEVELS.findIndex(l => l.type === 'dodge' && l.dodges >= 2);
+  G.startLevel(i);
+  assert(advanceUntil(() => G.state.phase === 'dodge'));
+  advance(60); tapAt(100);                                // first one ducked
+  assert(advanceUntil(() => G.state.phase === 'dodge'));
+  advance(700);                                           // stand still for the second
+  advance(1400);
+  assert.equal(els.verdict.textContent, 'YOU DIED');
+});
+
+t('no two levels in a row use the same mechanic (after the opening pair)', () => {
+  // levels 1-2 are both plain duels on purpose: they teach the timing before
+  // any twist shows up. From level 3 on, every level changes the mechanic.
+  for (let i = 2; i < G.LEVELS.length; i++) {
+    assert.notEqual(G.LEVELS[i].type, G.LEVELS[i - 1].type,
+      'levels ' + i + ' and ' + (i + 1) + ' are both ' + G.LEVELS[i].type);
+  }
+});
+
+t('each mechanic gets harder every time it comes back', () => {
+  const seen = {};
+  const load = (l) => l.type === 'gang' ? l.foes : l.type === 'dodge' ? l.dodges
+             : l.type === 'feint' ? l.decoys : l.steps || 1;
+  for (const l of G.LEVELS) {
+    const prev = seen[l.type];
+    if (prev) {
+      const harder = load(l) > load(prev) || l.opp < prev.opp;
+      assert(harder, l.n + ' is not harder than ' + prev.n);
+    }
+    seen[l.type] = l;
+  }
 });
 
 /* ---- local 2-player -------------------------------------------------- */
@@ -288,17 +415,23 @@ t('versus: leaving restores single player', () => {
 
 t('every level is reachable and winnable', () => {
   for (let i = 0; i < G.LEVELS.length; i++) {
+    const L = G.LEVELS[i], tag = 'lvl ' + (i + 1) + ' (' + L.n + ')';
     G.startLevel(i);
-    if (G.LEVELS[i].type === 'dodge') {
-      assert(advanceUntil(() => G.state.phase === 'dodge'), 'lvl ' + (i + 1) + ': no dodge cue');
-      advance(80); tapAt(100);
+
+    for (let d = 0; d < (L.dodges || 0); d++) {            // duck everything first
+      assert(advanceUntil(() => G.state.phase === 'dodge'), tag + ': no dodge cue');
+      advance(70); tapAt(100);
     }
-    assert(advanceUntil(() => G.state.phase === 'bang'), 'lvl ' + (i + 1) + ': no BANG');
-    advance(80);
-    tapAt(G.state.side === 'L' ? 100 : 900);
-    if (G.LEVELS[i].type === 'double') { advance(80); tapAt(100); }
+    assert(advanceUntil(() => G.state.phase === 'bang'), tag + ': no BANG');
+
+    const shots = L.type === 'gang' ? L.foes : (L.steps || 1);
+    for (let k = 0; k < shots; k++) {
+      advance(70);
+      const want = L.type === 'mirror' ? (G.state.side === 'L' ? 'R' : 'L') : G.state.side;
+      tapAt(want === 'L' ? 100 : want === 'R' ? 900 : 100);
+    }
     advance(1400);
-    assert.equal(els.verdict.textContent, 'WINNER', 'lvl ' + (i + 1) + ' unwinnable');
+    assert.equal(els.verdict.textContent, 'WINNER', tag + ' unwinnable');
   }
 });
 
