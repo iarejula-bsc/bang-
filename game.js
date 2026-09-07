@@ -60,6 +60,33 @@ const FOE_SPOTS = { 1:[0.77], 2:[0.66,0.87], 3:[0.58,0.74,0.90], 4:[0.52,0.65,0.
 const FOE_TINTS = ['#b3402c', '#7c4a86', '#2f7d6a', '#b3822c'];
 
 const STARS = [230, 320, 460];    // ms thresholds for 3 / 2 / 1 stars
+
+/* Cosmetics. Nothing here touches the duel: hats change the silhouette,
+   bandanas recolour the neck / belt / trim, extras add a detail. */
+const ITEMS = [
+  { slot:'hat', id:'stetson',  n:'Stetson',    p:  0 },
+  { slot:'hat', id:'sheriff',  n:'Sheriff',    p: 40 },
+  { slot:'hat', id:'rag',      n:'Head Rag',   p: 60 },
+  { slot:'hat', id:'bowler',   n:'Bowler',     p: 80 },
+  { slot:'hat', id:'sombrero', n:'Sombrero',   p:110 },
+  { slot:'hat', id:'tophat',   n:'Undertaker', p:150 },
+
+  { slot:'bandana', id:'blue',    n:'Prairie Blue', p:  0, c:'#3f6fa8' },
+  { slot:'bandana', id:'crimson', n:'Crimson',      p: 25, c:'#c0392b' },
+  { slot:'bandana', id:'emerald', n:'Cactus',       p: 35, c:'#2f7d55' },
+  { slot:'bandana', id:'violet',  n:'Violet',       p: 55, c:'#7c4a86' },
+  { slot:'bandana', id:'bone',    n:'Bone',         p: 85, c:'#e8dcc0' },
+  { slot:'bandana', id:'gold',    n:'Fool\u2019s Gold', p:120, c:'#e0a326' },
+
+  { slot:'extra', id:'none',   n:'Nothing',  p:  0 },
+  { slot:'extra', id:'cigar',  n:'Cigar',    p: 45 },
+  { slot:'extra', id:'badge',  n:'Tin Star', p: 75 },
+  { slot:'extra', id:'poncho', n:'Poncho',   p:130 },
+];
+const SLOTS = [['hat', 'HATS'], ['bandana', 'BANDANA & TRIM'], ['extra', 'EXTRAS']];
+const FREE = ['hat.stetson', 'bandana.blue', 'extra.none'];
+const LOOK0 = { hat: 'stetson', bandana: 'blue', extra: 'none' };
+const COIN = '\u25c9';
 const VS_WIN = 3;                 // rounds needed to take a local match
 const PN = ['P1', 'P2'];
 
@@ -77,10 +104,24 @@ function clearTimers() { timers.forEach(clearTimeout); timers = []; }
 /* ------------------------------------------------------------------- save */
 
 const KEY = 'rsb.save.v1';
-let save = { best: {}, cleared: [], mute: false };
+/* one object for the whole session: never rebind it, only mutate, so nothing
+   can end up holding a stale save */
+const save = { best: {}, cleared: [], coins: 0, owned: FREE.slice(),
+               equipped: Object.assign({}, LOOK0), mute: false };
 try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
 function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) {} }
 const unlocked = (i) => i === 0 || save.cleared.includes(i - 1);
+
+const itemKey = (it) => it.slot + '.' + it.id;
+const findItem = (slot, id) => ITEMS.find(it => it.slot === slot && it.id === id);
+const owns = (it) => save.owned.indexOf(itemKey(it)) >= 0;
+const bandanaColor = () => (findItem('bandana', save.equipped.bandana) || {}).c || '#3f6fa8';
+
+/* push the equipped look onto the hero so the next frame shows it */
+function applyLook() {
+  scene.hero.style = { hat: save.equipped.hat, extra: save.equipped.extra };
+  scene.hero.accent = bandanaColor();
+}
 
 /* ------------------------------------------------------------------ audio */
 
@@ -151,7 +192,7 @@ const isFlank = (l) => l.type === 'aim' || l.type === 'mirror';
 
 function resetScene(level, foeCount) {
   scene.pal = level.pal; scene.shake = 0; scene.flash = 0;
-  Object.assign(scene.hero, { arm: 0, fall: 0, lean: 0, flash: 0, dir: 1 });
+  Object.assign(scene.hero, { arm: 0, fall: 0, lean: 0, flash: 0, dir: 1, s: 1, dy: 0, abs: 0 });
   scene.foes = [];
 
   if (isFlank(level)) {            // hero in the middle, one bandit either side
@@ -245,9 +286,58 @@ function drawBackground() {
   cactus(W * 0.93, GROUND + 10 * S, 1.3, p[4]);
 }
 
+function star(cx, cy, r, col) {
+  ctx.fillStyle = col; ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r;
+    ctx[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+/* headwear, all sitting on a head centred at (2,-118) with r 12 */
+function drawHat(kind, ink, accent) {
+  ctx.fillStyle = ink;
+  switch (kind) {
+    case 'rag':
+      ctx.fillStyle = accent;
+      ctx.beginPath(); ctx.arc(2, -119, 12.5, Math.PI, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-9, -122); ctx.lineTo(-21, -127);
+      ctx.lineTo(-18, -113); ctx.closePath(); ctx.fill();
+      break;
+    case 'bowler':
+      ctx.beginPath(); ctx.ellipse(1, -127, 20, 4.5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(1, -127, 11.5, Math.PI, TAU); ctx.fill();
+      break;
+    case 'sombrero':
+      ctx.beginPath(); ctx.ellipse(1, -126, 37, 7, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-9, -126); ctx.lineTo(-7, -141);
+      ctx.lineTo(9, -141); ctx.lineTo(11, -126); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = accent; ctx.fillRect(-9, -131, 20, 4);
+      break;
+    case 'tophat':
+      ctx.beginPath(); ctx.ellipse(1, -128, 21, 5, 0, 0, TAU); ctx.fill();
+      ctx.fillRect(-10, -158, 22, 30);
+      ctx.fillStyle = accent; ctx.fillRect(-10, -137, 22, 5);
+      break;
+    case 'sheriff':
+      ctx.beginPath(); ctx.ellipse(1, -128, 27, 5.5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-11, -128); ctx.lineTo(-8, -145);
+      ctx.lineTo(11, -145); ctx.lineTo(13, -128); ctx.closePath(); ctx.fill();
+      star(2, -136, 5.5, '#e8dcc0');
+      break;
+    default:                                        // stetson
+      ctx.beginPath(); ctx.ellipse(1, -128, 27, 5.5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-11, -128); ctx.lineTo(-8, -144);
+      ctx.lineTo(11, -144); ctx.lineTo(13, -128); ctx.closePath(); ctx.fill();
+  }
+}
+
 /* one gunslinger, silhouette style */
 function drawGuy(g, tick) {
-  const gs = S * (g.s || 1);
+  const st = g.style || {};
+  // g.abs pins a final scale regardless of viewport (the store's showroom)
+  const gs = g.abs || S * (g.s || 1);
   const x = clamp(g.px * W, 120 * gs, W - 120 * gs);
   const bob = g.fall ? 0 : Math.sin(tick / 520 + g.px * 9) * 1.4;
   ctx.save();
@@ -287,6 +377,15 @@ function drawGuy(g, tick) {
   ctx.fillStyle = g.accent; ctx.fillRect(-19, -66, 38, 7);
   ctx.fillStyle = ink; ctx.fillRect(14, -66, 9, 16);   // holster
 
+  if (st.extra === 'poncho') {
+    ctx.globalAlpha = .55; ctx.fillStyle = g.accent;
+    ctx.beginPath(); ctx.moveTo(-16, -101); ctx.lineTo(16, -101);
+    ctx.lineTo(23, -56); ctx.lineTo(-23, -56); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = .85; ctx.fillRect(-21, -70, 43, 3.5);
+    ctx.globalAlpha = 1;
+  }
+  if (st.extra === 'badge') star(6, -90, 5, '#e8dcc0');
+
   // back arm
   ctx.strokeStyle = ink; ctx.lineWidth = 9;
   ctx.beginPath(); ctx.moveTo(-8, -98); ctx.lineTo(-15, -70); ctx.stroke();
@@ -296,9 +395,14 @@ function drawGuy(g, tick) {
   ctx.beginPath(); ctx.arc(2, -118, 12, 0, TAU); ctx.fill();
   ctx.fillStyle = g.accent;
   ctx.beginPath(); ctx.moveTo(-8, -108); ctx.lineTo(10, -108); ctx.lineTo(1, -98); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = ink;
-  ctx.beginPath(); ctx.ellipse(1, -128, 27, 5.5, 0, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(-11, -128); ctx.lineTo(-8, -144); ctx.lineTo(11, -144); ctx.lineTo(13, -128); ctx.closePath(); ctx.fill();
+  drawHat(st.hat, ink, g.accent);
+
+  if (st.extra === 'cigar') {
+    ctx.strokeStyle = '#6b4b2a'; ctx.lineWidth = 3.4;
+    ctx.beginPath(); ctx.moveTo(12, -115); ctx.lineTo(25, -113); ctx.stroke();
+    ctx.fillStyle = '#ff8a3a';
+    ctx.beginPath(); ctx.arc(26, -113, 2, 0, TAU); ctx.fill();
+  }
 
   // gun arm
   ctx.strokeStyle = ink; ctx.lineWidth = 10;
@@ -374,7 +478,7 @@ function loop(t) {
 /* ------------------------------------------------------------------- screens */
 
 function show(name) {
-  ['menu', 'levels', 'result'].forEach(id => $(id).classList.toggle('on', id === name));
+  ['menu', 'levels', 'result', 'shop'].forEach(id => $(id).classList.toggle('on', id === name));
   $('hud').classList.toggle('on', name === 'play');
   state.screen = name;
 }
@@ -405,6 +509,62 @@ function buildGrid() {
   });
   const all = Object.values(save.best);
   $('pb').textContent = all.length ? fmt(Math.min.apply(null, all)) : '—';
+  $('menuwallet').innerHTML = purse();
+}
+
+/* ------------------------------------------------------------------- store */
+
+const purse = () => '<b>' + COIN + ' ' + save.coins + '</b>';
+
+function buildShelf() {
+  $('wallet').innerHTML = purse();
+  $('menuwallet').innerHTML = purse();
+  const shelf = $('shelf');
+  shelf.innerHTML = '';
+  SLOTS.forEach(([slot, label]) => {
+    const head = document.createElement('h3');
+    head.textContent = label; shelf.appendChild(head);
+    const rack = document.createElement('div');
+    rack.className = 'rack';
+    ITEMS.filter(it => it.slot === slot).forEach(it => {
+      const have = owns(it), worn = save.equipped[slot] === it.id;
+      const cell = document.createElement('div');
+      cell.className = 'item' + (worn ? ' worn' : have ? ' have'
+                     : save.coins < it.p ? ' cant' : '');
+      cell.innerHTML = it.n +
+        '<div class="p">' + (worn ? 'WORN' : have ? 'OWNED' : COIN + ' ' + it.p) + '</div>' +
+        (it.c ? '<div class="swatch" style="background:' + it.c + '"></div>' : '');
+      cell.onclick = () => pickItem(it, cell);
+      rack.appendChild(cell);
+    });
+    shelf.appendChild(rack);
+  });
+}
+
+/* one click: buy it if you can afford it, then wear it */
+function pickItem(it, cell) {
+  if (!owns(it)) {
+    if (save.coins < it.p) {
+      if (cell) cell.className += ' nope';
+      sfx.early();
+      return false;
+    }
+    save.coins -= it.p;
+    save.owned.push(itemKey(it));
+    sfx.cue();
+  } else sfx.tick();
+  save.equipped[it.slot] = it.id;
+  applyLook(); persist(); buildShelf();
+  return true;
+}
+
+function openShop() {
+  clearTimers();
+  resetScene({ type: 'duel', pal: 0 }, 0);      // showroom: nobody to shoot
+  scene.hero.px = 0.5; scene.hero.abs = 0.8; scene.hero.dy = 86;
+  applyLook();
+  buildShelf();
+  show('shop');
 }
 
 /* ---------------------------------------------------------------- game flow */
@@ -417,7 +577,7 @@ const HINTS = {
   duel:   'DRAW ON BANG!',
   feint:  'ONLY "BANG!" COUNTS',
   aim:    'SHOOT THE SIDE THAT LIGHTS UP  (\u2190 \u2192)',
-  mirror: 'SHOOT THE SIDE THAT DOES NOT  (\u2190 \u2192)',
+  mirror: 'SHOOT THE DARK SIDE, NOT THE LIT ONE  (\u2190 \u2192)',
   dodge:  'HE PLAYS DIRTY — DODGE, THEN DRAW',
   sudden: 'NO READY. NO STEADY.',
 };
@@ -429,6 +589,7 @@ function startLevel(i) {
   state.i = i; L = LEVELS[i];
   state.phase = 'lead'; state.hits = 0; state.side = null; state.react = 0; state.dodged = 0;
   resetScene(L, L.foes || (isFlank(L) ? 2 : 1));
+  applyLook();
   $('lvlname').textContent = 'LVL ' + (i + 1) + ' · ' + L.n.toUpperCase();
   dirsEl.style.opacity = 0; $('dL').className = 'd'; $('dR').className = 'd';
   cue('');
@@ -571,9 +732,13 @@ function finish(win, note) {
   state.phase = 'over'; clearTimers();
   dirsEl.style.opacity = 0;
   const ms = state.react;
+  let earned = 0;
   if (win) {
     sfx.win();
-    if (!save.cleared.includes(state.i)) save.cleared.push(state.i);
+    const first = !save.cleared.includes(state.i);
+    earned = (first ? 15 : 0) + 5 * stars(ms);   // 20-30 the first time, 5-15 after
+    save.coins += earned;
+    if (first) save.cleared.push(state.i);
     if (!save.best[state.i] || ms < save.best[state.i]) save.best[state.i] = ms;
     persist();
   } else sfx.lose();
@@ -582,6 +747,7 @@ function finish(win, note) {
     $('verdict').textContent = win ? 'WINNER' : 'YOU DIED';
     $('verdict').style.color = win ? '#f2b338' : '#e0562f';
     $('rtime').textContent = win && ms ? fmt(ms) : '';
+    $('rcoins').innerHTML = earned ? '+' + earned + ' ' + COIN : '';
     $('rstars').innerHTML = win && ms ? '★'.repeat(stars(ms)) + '<span style="opacity:.2">' +
       '★'.repeat(3 - stars(ms)) + '</span>' : '';
     $('rnote').textContent = note || '';
@@ -605,6 +771,7 @@ function startVersus(fresh) {
         wait: [900, 3400], dodges: 0 };
   state.phase = 'lead'; state.react = 0; state.hits = 0; state.side = null;
   resetScene(L, 1);
+  applyLook();
   scene.foes[0].accent = '#b3402c';
   showScore();
   $('pads').classList.add('on');
@@ -660,6 +827,7 @@ function vsRound(w, note, react) {
     $('verdict').textContent = w < 0 ? 'STANDOFF' : done ? PN[w] + ' WINS THE MATCH' : PN[w] + ' TAKES IT';
     $('verdict').style.color = w === 1 ? '#e0562f' : w === 0 ? '#7fb1e8' : '#f6e7c8';
     $('rtime').textContent = react ? fmt(react) : '';
+    $('rcoins').innerHTML = '';
     $('rstars').innerHTML = 'P1 <b>' + state.score[0] + '</b> — <b>' + state.score[1] + '</b> P2';
     $('rnote').textContent = note;
     $('next').style.display = '';
@@ -724,12 +892,18 @@ function firstUnplayed() {
 
 function bail() {
   clearTimers();
+  if (state.screen === 'shop') { $('shopBack').onclick(); return; }
   if (state.mode === 'vs') { state.mode = 'solo'; $('pads').classList.remove('on'); show('menu'); }
   else { buildGrid(); show('levels'); }
 }
 
 $('play').onclick    = () => startLevel(firstUnplayed());
 $('vs').onclick      = () => startVersus(true);
+$('toShop').onclick  = openShop;
+$('shopBack').onclick = () => {
+  resetScene(LEVELS[0], 1); applyLook();
+  show('menu');
+};
 $('pick').onclick    = () => { buildGrid(); show('levels'); };
 $('toMenu').onclick  = () => show('menu');
 $('toLevels').onclick= bail;
@@ -747,11 +921,14 @@ $('mute').onclick    = (e) => {
 };
 $('wipe').onclick = () => {
   if (!confirm('Erase all times and progress?')) return;
-  save = { best: {}, cleared: [], mute: save.mute }; persist(); buildGrid();
+  save.best = {}; save.cleared = []; save.coins = 0;
+  save.owned = FREE.slice(); save.equipped = Object.assign({}, LOOK0);
+  applyLook(); persist(); buildGrid();
 };
 
 $('mute').textContent = save.mute ? '✕' : '♫';
 resetScene(LEVELS[0], 1);
+applyLook();
 buildGrid();
 fit();
 requestAnimationFrame(loop);

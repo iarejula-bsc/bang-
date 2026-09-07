@@ -16,28 +16,46 @@ Open `index.html` in a browser, or serve the folder to play on a phone:
     # desktop: http://localhost:8000
     # phone (same wifi): http://<your-lan-ip>:8000
 
-Controls: **tap / click / SPACE** to draw, **← →** for the aim duels,
-**ESC** to leave a duel.
+Controls: **tap / click / SPACE** to draw, **← →** for the aim and mirror
+duels, **ESC** to leave a duel or the store.
 
-Progress (cleared levels, best times, mute) lives in `localStorage` under
+Progress (cleared levels, best times, coin, wardrobe, mute) lives in
+`localStorage` under
 `rsb.save.v1`, so it survives reloads and closing the browser. It is per browser
 and per origin: `file://` and `http://localhost:8000` keep separate saves, and a
 private window forgets everything on close. If storage is unavailable the game
 still runs, it just cannot remember. *RESET SAVE* in the level list wipes it.
 
-## Single player — 15 duels
+## Single player — 24 duels
 
-Opponents get faster the deeper you go (620 ms down to 300 ms). Five kinds:
+Seven mechanics, each coming back harder instead of repeating, and no two
+levels in a row using the same one (bar the two opening duels, which teach the
+timing):
 
-| type     | rule |
-|----------|------|
-| `duel`   | READY, STEADY, BANG — draw after the bang, never before |
-| `feint`  | decoy words flash first (`BANK!`, `BANANA!`), only `BANG!` counts |
-| `aim`    | after the bang one side lights up; shoot that side |
-| `dodge`  | he shoots early — tap to duck, then win the real draw |
-| `double` | two bandits, two taps, one time budget |
+| type     | rule | escalates |
+|----------|------|-----------|
+| `duel`   | READY, STEADY, BANG — draw after the bang, never before | 620 ms → 290 ms |
+| `feint`  | decoy words flash first (`BANK!`, `BANANA!`), only `BANG!` counts | 1 → 4 decoys, each flashing shorter |
+| `aim`    | a bandit on each flank; shoot the side that lights up | 1 → 2 targets, sides alternate |
+| `mirror` | same setup, inverted: shoot the side that stays dark | 1 → 2 targets |
+| `dodge`  | he shoots early — duck, then win the real draw | 1 → 3 cheap shots, shrinking window |
+| `gang`   | 2, 3 or 4 bandits, one shot each, one budget | The Brothers → The Gang → The Cartel |
+| `sudden` | no READY, no STEADY: the bang can land at 250 ms | 520 ms → 400 ms |
 
 Drawing before the bang always loses. Stars: 3 under 230 ms, 2 under 320 ms.
+
+## The general store
+
+Wins pay coin: **15 for a first clear, plus 5 per star** (so 30 for a first
+3-star draw, 5-15 on a replay). Losing pays nothing, and the two-player mode
+pays nothing either — no farming your friend.
+
+Coin buys looks, never advantages: **hats** (Sheriff, Head Rag, Bowler,
+Sombrero, Undertaker) change the silhouette, **bandanas** recolour the neck,
+belt and trim, and **extras** add a cigar, a tin star or a poncho. One click
+buys and wears an item; clicking something you own just wears it. The store
+doubles as a showroom — your gunslinger stands below the shelf wearing whatever
+you pick, and the gear follows you into every duel.
 
 ## Two players, same screen
 
@@ -60,14 +78,18 @@ server and no unzipping — just send it. Rebuild it after editing `game.js`.
 
     node test/logic.js
 
-The suite runs `game.js` inside a `vm` context with a virtual clock and a stub
-DOM, so every duel type is played out deterministically (reaction timing, false
-starts, unlocks, both control schemes in versus mode). Two of them re-boot the
-script against the same fake storage to prove progress survives a page reload,
-and that a browser refusing storage does not break the game.
+47 cases. The suite runs `game.js` inside a `vm` context with a virtual clock
+and a stub DOM, so every duel is played out deterministically: reaction timing,
+false starts, each mechanic and its failure modes, the difficulty curve (never
+repeats, always escalates), coin rewards, buying and equipping, unlocks, and
+both control schemes in versus mode. Three cases re-boot the script against the
+same fake storage to prove progress and purchases survive a page reload, and
+that a browser refusing storage does not break the game.
 
 ## Level tweaking
 
-`LEVELS` at the top of `game.js`: `opp` is the opponent's reaction time in ms,
-`wait` the random window before the bang, `pal` the palette, `decoys` the number
-of feints. `index.html#lvl7` jumps straight into a level while working on it.
+`LEVELS` at the top of `game.js`: `opp` is the opponent's reaction time in ms
+(the whole budget for `gang` and multi-step `aim`), `wait` the random window
+before the bang, `pal` the palette, and `decoys` / `dodges` / `foes` / `steps`
+dial the mechanic up. `ITEMS` right below it is the store catalogue — `p` is the
+price, `c` a bandana colour. `index.html#lvl7` jumps straight into a level.

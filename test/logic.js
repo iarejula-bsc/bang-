@@ -26,28 +26,34 @@ const ctxStub = new Proxy({}, { get: (o, k) =>
 
 function mkEl(id) {
   const set = new Set();
-  return els[id] = {
-    id, textContent: '', innerHTML: '', className: '', style: {}, children: [], offsetWidth: 1,
+  let html = '';
+  const el = {
+    id, textContent: '', className: '', style: {}, children: [], offsetWidth: 1,
     classList: { add: c => set.add(c), remove: c => set.delete(c), contains: c => set.has(c),
                  toggle: (c, on) => on ? set.add(c) : set.delete(c) },
     appendChild(c) { this.children.push(c); },
     getContext: () => ctxStub, addEventListener() {}, closest: () => null,
     click() { this.onclick && this.onclick(); },
   };
+  Object.defineProperty(el, 'innerHTML', {
+    get: () => html,
+    set(v) { html = String(v); if (!html) el.children.length = 0; },
+  });
+  return els[id] = el;
 }
 
 const store = {};                 /* shared "browser storage" across boots */
 
 const file = process.argv[2] || path.join(__dirname, '..', 'game.js');
 const src = fs.readFileSync(file, 'utf8') +
-  '\n;globalThis.__g = { state, startLevel, startVersus, tap, LEVELS, save, scene, VS_WIN };';
+  '\n;globalThis.__g = { state, startLevel, startVersus, tap, LEVELS, save, scene, VS_WIN, ITEMS, findItem, pickItem, openShop, buildShelf };';
 
 /* boot game.js in a fresh context, as a page load would */
 function boot(storage) {
   const handlers = {};
   ['cv','cue','hint','dirs','dL','dR','grid','pb','lvlname','menu','levels','result','hud','verdict',
-   'rtime','rstars','rnote','next','retry','toLevels','toMenu','play','pick','vs','quit','mute','wipe',
-   'pads','pad1','pad2'].forEach(mkEl);
+   'rtime','rstars','rnote','rcoins','next','retry','toLevels','toMenu','play','pick','vs','quit','mute',
+   'wipe','pads','pad1','pad2','shop','shelf','wallet','menuwallet','toShop','shopBack'].forEach(mkEl);
   const sandbox = {
     console, Math, JSON, Object, Array, Date, String, Number, isNaN, parseInt, parseFloat,
     performance: { now: () => T },
@@ -55,6 +61,7 @@ function boot(storage) {
     localStorage: storage ||
       { getItem: k => store[k] || null, setItem: (k, v) => store[k] = String(v) },
     document: { getElementById: id => els[id] || mkEl(id), createElement: () => mkEl('t' + (++seq)) },
+    confirm: () => true,
     window: { devicePixelRatio: 1, innerWidth: 1000, innerHeight: 600,
               addEventListener: (k, f) => handlers[k] = f },
   };
@@ -346,6 +353,105 @@ t('each mechanic gets harder every time it comes back', () => {
   }
 });
 
+/* ---- cosmetics store ------------------------------------------------- */
+
+const coins = () => G.save.coins;
+
+t('store: you start with the free gear on and no coin', () => {
+  G.save.coins = 0; G.save.owned = ['hat.stetson', 'bandana.blue', 'extra.none'];
+  G.save.equipped = { hat: 'stetson', bandana: 'blue', extra: 'none' };
+  assert.equal(coins(), 0);
+  G.openShop();
+  assert.equal(G.state.screen, 'shop');
+  assert.equal(G.scene.foes.length, 0, 'the showroom should be empty');
+  assert.equal(G.scene.hero.px, 0.5);
+  assert.equal(G.scene.hero.style.hat, 'stetson');
+});
+
+t('store: the shelf lists every item under its slot', () => {
+  G.buildShelf();
+  const racks = els.shelf.children.filter(c => c.className === 'rack');
+  assert.equal(racks.length, 3, 'expected hats / bandanas / extras');
+  const listed = racks.reduce((n, r) => n + r.children.length, 0);
+  assert.equal(listed, G.ITEMS.length, 'not every item is on the shelf');
+  assert(els.wallet.innerHTML.indexOf(String(coins())) >= 0, 'wallet not shown');
+});
+
+t('duels pay coin: first clear plus a bonus per star', () => {
+  G.save.cleared = []; G.save.best = {}; G.save.coins = 0;
+  G.startLevel(0); toBang(); advance(200); tapAt(100); advance(1200);
+  assert.equal(coins(), 15 + 5 * 3, 'first 3-star clear should pay 30');
+  assert.equal(els.rcoins.innerHTML.indexOf('+30'), 0, 'reward not shown: ' + els.rcoins.innerHTML);
+
+  G.startLevel(0); toBang(); advance(300); tapAt(100); advance(1200);   // 2 stars, replay
+  assert.equal(coins(), 30 + 10, 'a replay should pay stars only');
+  G.startLevel(0); toBang(); advance(400); tapAt(100); advance(1200);   // 1 star
+  assert.equal(coins(), 40 + 5, 'a one-star win should pay 5');
+});
+
+t('losing pays nothing', () => {
+  const before = coins();
+  G.startLevel(0); advance(600); tapAt(100); advance(1400);   // false start
+  assert.equal(coins(), before);
+  assert.equal(els.rcoins.innerHTML, '');
+});
+
+t('store: buying takes the coin, equips it, and sticks', () => {
+  G.save.coins = 200;
+  const hat = G.findItem('hat', 'sombrero');
+  assert(hat && hat.p > 0);
+  assert.equal(G.pickItem(hat), true);
+  assert.equal(coins(), 200 - hat.p);
+  assert(G.save.owned.indexOf('hat.sombrero') >= 0, 'not owned after buying');
+  assert.equal(G.save.equipped.hat, 'sombrero');
+  assert.equal(G.scene.hero.style.hat, 'sombrero', 'the hero is still bare-headed');
+});
+
+t('store: re-equipping something you own is free', () => {
+  const before = coins();
+  G.pickItem(G.findItem('hat', 'stetson'));
+  assert.equal(coins(), before, 'charged twice for the same hat');
+  assert.equal(G.save.equipped.hat, 'stetson');
+  G.pickItem(G.findItem('hat', 'sombrero'));
+  assert.equal(coins(), before, 'charged again for an owned hat');
+});
+
+t('store: no credit — an item you cannot afford is refused', () => {
+  G.save.coins = 5;
+  const pricey = G.ITEMS.filter(it => it.p > 5 && !G.save.owned.includes(it.slot + '.' + it.id))[0];
+  assert(pricey, 'everything is already owned');
+  assert.equal(G.pickItem(pricey), false);
+  assert.equal(coins(), 5, 'coin went missing');
+  assert.equal(G.save.equipped[pricey.slot] === pricey.id, false, 'equipped without paying');
+});
+
+t('store: a bandana recolours the hero', () => {
+  G.save.coins = 300;
+  const red = G.findItem('bandana', 'crimson');
+  G.pickItem(red);
+  assert.equal(G.scene.hero.accent, red.c);
+  G.startLevel(0);                     // and it survives into a duel
+  assert.equal(G.scene.hero.accent, red.c);
+  assert.equal(G.scene.foes[0].accent === red.c, false, 'the bandit copied your look');
+});
+
+t('store: cosmetics are cosmetic — the duel still plays the same', () => {
+  G.save.coins = 300;
+  G.pickItem(G.findItem('extra', 'poncho'));
+  G.pickItem(G.findItem('hat', 'tophat'));
+  G.startLevel(0); toBang(); advance(150); tapAt(100); advance(1200);
+  assert.equal(els.verdict.textContent, 'WINNER');
+});
+
+t('store: RESET SAVE clears coin and gear too', () => {
+  G.save.coins = 99;
+  els.wipe.onclick();                  // confirm() is stubbed truthy below
+  assert.equal(coins(), 0);
+  assert.deepEqual(G.save.owned, ['hat.stetson', 'bandana.blue', 'extra.none']);
+  assert.equal(G.save.equipped.hat, 'stetson');
+  assert.equal(G.scene.hero.style.hat, 'stetson');
+});
+
 /* ---- local 2-player -------------------------------------------------- */
 
 t('versus: SPACE wins the round for P1', () => {
@@ -449,6 +555,20 @@ t('a cleared level is still cleared after a page reload', () => {
   els.grid.children = []; els.pick.onclick();
   assert(els.grid.children[2].onclick, 'level 3 locked again after reload');
   assert(!els.grid.children[3].onclick, 'level 4 unlocked out of order');
+});
+
+t('bought cosmetics survive a page reload', () => {
+  G.save.coins = 300;
+  G.pickItem(G.findItem('hat', 'sheriff'));
+  G.pickItem(G.findItem('bandana', 'gold'));
+  const left = G.save.coins;
+
+  const r = boot();
+  assert.equal(r.G.save.coins, left, 'coin balance lost on reload');
+  assert(r.G.save.owned.indexOf('hat.sheriff') >= 0, 'hat lost on reload');
+  assert.equal(r.G.save.equipped.hat, 'sheriff');
+  assert.equal(r.G.save.equipped.bandana, 'gold');
+  assert.equal(r.G.scene.hero.style.hat, 'sheriff', 'gear not applied at boot');
 });
 
 t('blocked storage (private window) still boots and plays', () => {
