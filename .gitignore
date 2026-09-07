@@ -1,0 +1,4 @@
+# build artifact: regenerate with ./build.sh
+readysteadybang.html
+node_modules/
+.DS_Store
