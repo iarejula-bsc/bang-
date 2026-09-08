@@ -74,6 +74,19 @@ hands the round over. Nobody draws within 4 s: standoff, no score.
 That single file has the CSS and JS inlined, so it runs from `file://` with no
 server and no unzipping — just send it. Rebuild it after editing `game.js`.
 
+### GitHub Pages
+
+`.github/workflows/pages.yml` runs the tests, runs `./build.sh` and publishes
+the bundle on every push to `main` — so the live site is always built from
+source and `readysteadybang.html` stays out of git.
+
+    https://iarejula-bsc.github.io/bang-/                     # the game
+    https://iarejula-bsc.github.io/bang-/readysteadybang.html # same file, direct link
+
+One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
+Actions**. After that, *Actions → Deploy to Pages → Run workflow* redeploys by
+hand.
+
 ## Tests
 
     node test/logic.js
